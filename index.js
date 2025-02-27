@@ -5,17 +5,57 @@ import { resolve, join } from "https://deno.land/std@0.217.0/path/mod.ts";
 import { ensureDir, exists } from "https://deno.land/std@0.217.0/fs/mod.ts";
 import * as DenoAPI from "https://deno.land/std@0.217.0/version.ts";
 
-// 获取安全的工作目录路径
+// 修改获取工作目录的函数
 const getWorkDir = () => {
+    // 尝试获取环境变量中的自定义路径
     const customPath = Deno.env.get("FILE_PATH");
     if (customPath) {
-        return resolve(Deno.cwd(), customPath);
+        return resolve(customPath);
     }
-    return resolve(Deno.cwd(), "temp");
+
+    // 根据不同环境选择合适的临时目录
+    try {
+        // 尝试使用系统临时目录
+        const tempDir = Deno.env.get("TEMP") || 
+                       Deno.env.get("TMP") || 
+                       "./temp";  // 如果环境变量都不可用，则使用当前目录下的temp
+        
+        return resolve(tempDir, "deno-argo");
+    } catch {
+        // 如果获取系统临时目录失败，则使用当前目录
+        return resolve("./temp");
+    }
 };
 
-// 使用 Deno.env.get() 获取环境变量
-const FILE_PATH = getWorkDir();
+// 修改初始化工作目录函数
+async function initWorkDir() {
+    try {
+        const dir = getWorkDir();
+        await ensureDir(dir);
+        
+        // 测试目录写入权限
+        const testFile = join(dir, ".write-test");
+        await Deno.writeTextFile(testFile, "test");
+        await Deno.remove(testFile);
+        
+        console.log(`工作目录已准备: ${dir}`);
+        return dir;
+    } catch (error) {
+        if (error instanceof Deno.errors.PermissionDenied) {
+            console.error(`无法访问工作目录: ${error.message}`);
+            // 尝试使用备用目录
+            const fallbackDir = resolve("./temp");
+            await ensureDir(fallbackDir);
+            console.log(`使用备用工作目录: ${fallbackDir}`);
+            return fallbackDir;
+        }
+        console.error(`创建工作目录时出错: ${error.message}`);
+        throw error;
+    }
+}
+
+// 修改环境变量设置部分
+const FILE_PATH = await initWorkDir();  // 确保异步初始化完成
 const projectPageURL = Deno.env.get("URL") || '';
 const intervalInseconds = Deno.env.get("TIME") || 120;
 const UUID = Deno.env.get("UUID") || '89c13786-25aa-4520-b2e7-12cd60fb5202';
@@ -416,21 +456,6 @@ async function cleanFiles() {
 }
 
 // 在初始化时确保工作目录存在
-async function initWorkDir() {
-    try {
-        await ensureDir(FILE_PATH);
-        console.log(`工作目录已准备: ${FILE_PATH}`);
-    } catch (error) {
-        if (error instanceof Deno.errors.PermissionDenied) {
-            console.error(`无法访问工作目录: ${error.message}`);
-            throw error;
-        }
-        console.error(`创建工作目录时出错: ${error.message}`);
-        throw error;
-    }
-}
-
-// 在程序启动时初始化工作目录
 await initWorkDir();
 
 // 自动访问项目URL
