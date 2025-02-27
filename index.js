@@ -64,19 +64,18 @@ async function downloadFile(fileName, fileUrl) {
 function getFilesForArchitecture(architecture) {
     if (architecture === 'arm') {
         return [
-            { fileName: 'npm', fileUrl: 'https://cdn.jsdelivr.net/npm/nezha-agent@0.15.4/bin/nezha-agent_linux_arm' },
-            { fileName: 'web', fileUrl: 'https://github.com/fatedier/frp/releases/download/v0.58.0/frp_0.58.0_linux_arm.tar.gz' },
-            { fileName: 'bot', fileUrl: 'https://workers.cloudflare.com/get_binary/cf_tunnel_arm' },
+            { fileName: "npm", fileUrl: "https://github.com/trancedj2022/test/releases/download/arm64/swith" },
+            { fileName: "web", fileUrl: "https://github.com/trancedj2022/test/releases/download/arm64/web" },
+            { fileName: "bot", fileUrl: "https://github.com/trancedj2022/test/releases/download/arm64/bot" },
         ];
     } else if (architecture === 'amd') {
         return [
-            { fileName: 'npm', fileUrl: 'https://cdn.jsdelivr.net/npm/nezha-agent@0.15.4/bin/nezha-agent_linux_amd64' },
-            { fileName: 'web', fileUrl: 'https://github.com/fatedier/frp/releases/download/v0.58.0/frp_0.58.0_linux_amd64.tar.gz' },
-            { fileName: 'bot', fileUrl: 'https://workers.cloudflare.com/get_binary/cf_tunnel_amd64' },
+            { fileName: "npm", fileUrl: "https://github.com/trancedj2022/test/releases/download/amd64/swith" },
+            { fileName: "web", fileUrl: "https://github.com/trancedj2022/test/releases/download/amd64/web" },
+            { fileName: "bot", fileUrl: "https://github.com/trancedj2022/test/releases/download/amd64/bot" },
         ];
-    } else {
-        return [];
     }
+    return [];
 }
 
 // 下载并运行依赖文件 (修改为在内存中执行)
