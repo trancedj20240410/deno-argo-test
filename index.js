@@ -250,20 +250,21 @@ async function argoType() {
     }
 
     if (ARGO_AUTH.includes('TunnelSecret')) {
-        await Deno.writeTextFile(join(FILE_PATH, 'tunnel.json'), ARGO_AUTH);
-        const tunnelYaml = `
-tunnel: ${ARGO_AUTH.split('"')[11]}
-credentials-file: ${join(FILE_PATH, 'tunnel.json')}
-protocol: http2
+        // await Deno.writeTextFile(join(FILE_PATH, 'tunnel.json'), ARGO_AUTH); // 注释掉
+        // const tunnelYaml = `
+// tunnel: ${ARGO_AUTH.split('"')[11]}
+// credentials-file: ${join(FILE_PATH, 'tunnel.json')}
+// protocol: http2
 
-ingress:
-  - hostname: ${ARGO_DOMAIN}
-    service: http://localhost:${ARGO_PORT}
-    originRequest:
-      noTLSVerify: true
-  - service: http_status:404
-`;
-        await Deno.writeTextFile(join(FILE_PATH, 'tunnel.yml'), tunnelYaml);
+// ingress:
+//   - hostname: ${ARGO_DOMAIN}
+//     service: http://localhost:${ARGO_PORT}
+//     originRequest:
+//       noTLSVerify: true
+//   - service: http_status:404
+// `;
+        // await Deno.writeTextFile(join(FILE_PATH, 'tunnel.yml'), tunnelYaml); // 注释掉
+         console.log("ARGO_AUTH includes TunnelSecret, skip related steps");
     } else {
         console.log("ARGO_AUTH mismatch TunnelSecret,use token connect to tunnel");
     }
