@@ -1,6 +1,6 @@
 // index.js
 // 导入 Deno 的标准库和内置模块
-import { copy } from "https://deno.land/std@0.217.0/streams/copy.ts";
++import { copy } from 'https://deno.land/std@0.224.0/io/copy.ts';
 import { resolve, join } from "https://deno.land/std@0.217.0/path/mod.ts";
 import * as DenoAPI from "https://deno.land/std@0.217.0/version.ts";
 
