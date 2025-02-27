@@ -8,44 +8,65 @@ import * as DenoAPI from "https://deno.land/std@0.217.0/version.ts";
 // 获取工作目录的函数
 const getWorkDir = () => {
     try {
-        // 获取当前工作目录
-        const currentDir = Deno.cwd();
-        // 创建 .runtime 子目录
-        const runtimeDir = join(currentDir, ".runtime");
+        // 尝试使用操作系统的临时目录
+        const tempDir = Deno.env.get("TEMP") || 
+                       Deno.env.get("TMP") || 
+                       "/tmp";  // Linux/Unix系统的临时目录
+        
+        // 创建一个随机的子目录名
+        const randomDirName = Math.random().toString(36).substring(7);
+        const runtimeDir = join(tempDir, `deno-runtime-${randomDirName}`);
         return runtimeDir;
     } catch (error) {
-        console.error("获取工作目录失败:", error);
+        console.error("获取临时目录失败:", error);
+        // 回退到当前目录
         return ".";
     }
 };
 
-// 初始化工作目录函数
+// 修改初始化工作目录函数
 async function initWorkDir() {
-    try {
-        const dir = getWorkDir();
-        
-        // 确保目录存在
-        await ensureDir(dir).catch(error => {
-            console.warn(`创建目录失败: ${error.message}`);
-            return ".";
-        });
-
-        // 验证目录是否可写
-        const testPath = join(dir, ".write-test");
+    let attempts = 3; // 重试次数
+    while (attempts > 0) {
         try {
-            await Deno.writeTextFile(testPath, "test");
-            await Deno.remove(testPath);
-            console.log(`工作目录: ${dir}`);
+            const dir = getWorkDir();
+            
+            // 创建临时目录
+            await ensureDir(dir);
+            console.log(`创建临时目录成功: ${dir}`);
             return dir;
         } catch (error) {
-            console.warn(`目录 ${dir} 不可写: ${error.message}`);
-            return ".";
+            attempts--;
+            if (attempts === 0) {
+                console.error(`无法创建工作目录: ${error.message}`);
+                return ".";
+            }
+            // 短暂延迟后重试
+            await new Promise(resolve => setTimeout(resolve, 100));
         }
-    } catch (error) {
-        console.error(`初始化工作目录失败: ${error.message}`);
-        return ".";
     }
+    return ".";
 }
+
+// 确保在程序退出时清理临时目录
+const cleanupOnExit = async (dir) => {
+    if (dir && dir !== "." && dir !== "./") {
+        try {
+            await Deno.remove(dir, { recursive: true });
+            console.log("临时目录已清理");
+        } catch (error) {
+            console.error("清理临时目录失败:", error);
+        }
+    }
+};
+
+// 注册清理函数
+globalThis.addEventListener("unload", () => {
+    const currentDir = FILE_PATH;
+    if (currentDir && currentDir !== "." && !currentDir.includes(".runtime")) {
+        cleanupOnExit(currentDir);
+    }
+});
 
 // 修改环境变量设置部分
 const FILE_PATH = await initWorkDir();  // 确保异步初始化完成
