@@ -5,52 +5,44 @@ import { resolve, join } from "https://deno.land/std@0.217.0/path/mod.ts";
 import { ensureDir, exists } from "https://deno.land/std@0.217.0/fs/mod.ts";
 import * as DenoAPI from "https://deno.land/std@0.217.0/version.ts";
 
-// 修改获取工作目录的函数
+// 获取工作目录的函数
 const getWorkDir = () => {
-    // 尝试获取环境变量中的自定义路径
-    const customPath = Deno.env.get("FILE_PATH");
-    if (customPath) {
-        return resolve(customPath);
-    }
-
-    // 根据不同环境选择合适的临时目录
     try {
-        // 尝试使用系统临时目录
-        const tempDir = Deno.env.get("TEMP") || 
-                       Deno.env.get("TMP") || 
-                       "./temp";  // 如果环境变量都不可用，则使用当前目录下的temp
-        
-        return resolve(tempDir, "deno-argo");
-    } catch {
-        // 如果获取系统临时目录失败，则使用当前目录
-        return resolve("./temp");
+        // 首先尝试使用环境变量中的路径
+        const customPath = Deno.env.get("FILE_PATH");
+        if (customPath) {
+            return resolve(customPath);
+        }
+
+        // 如果在受限环境中，使用当前目录
+        return resolve(".");
+    } catch (error) {
+        console.error("获取工作目录失败，使用当前目录：", error);
+        return resolve(".");
     }
 };
 
-// 修改初始化工作目录函数
+// 初始化工作目录函数
 async function initWorkDir() {
     try {
         const dir = getWorkDir();
-        await ensureDir(dir);
         
-        // 测试目录写入权限
-        const testFile = join(dir, ".write-test");
-        await Deno.writeTextFile(testFile, "test");
-        await Deno.remove(testFile);
-        
-        console.log(`工作目录已准备: ${dir}`);
+        // 验证目录是否可写
+        const testPath = join(dir, ".write-test");
+        await Deno.writeTextFile(testPath, "test")
+            .then(() => Deno.remove(testPath))
+            .catch((error) => {
+                console.warn(`目录 ${dir} 不可写: ${error.message}`);
+                // 如果目录不可写，回退到当前目录
+                return resolve(".");
+            });
+
+        console.log(`工作目录: ${dir}`);
         return dir;
     } catch (error) {
-        if (error instanceof Deno.errors.PermissionDenied) {
-            console.error(`无法访问工作目录: ${error.message}`);
-            // 尝试使用备用目录
-            const fallbackDir = resolve("./temp");
-            await ensureDir(fallbackDir);
-            console.log(`使用备用工作目录: ${fallbackDir}`);
-            return fallbackDir;
-        }
-        console.error(`创建工作目录时出错: ${error.message}`);
-        throw error;
+        console.error(`初始化工作目录失败: ${error.message}`);
+        // 发生错误时使用当前目录
+        return resolve(".");
     }
 }
 
