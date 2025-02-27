@@ -2,10 +2,20 @@
 // 导入 Deno 的标准库和内置模块
 import { copy } from 'https://deno.land/std@0.224.0/io/copy.ts';
 import { resolve, join } from "https://deno.land/std@0.217.0/path/mod.ts";
+import { ensureDir, exists } from "https://deno.land/std@0.217.0/fs/mod.ts";
 import * as DenoAPI from "https://deno.land/std@0.217.0/version.ts";
 
+// 获取安全的工作目录路径
+const getWorkDir = () => {
+    const customPath = Deno.env.get("FILE_PATH");
+    if (customPath) {
+        return resolve(Deno.cwd(), customPath);
+    }
+    return resolve(Deno.cwd(), "temp");
+};
+
 // 使用 Deno.env.get() 获取环境变量
-const FILE_PATH = Deno.env.get("FILE_PATH") || "./temp";
+const FILE_PATH = getWorkDir();
 const projectPageURL = Deno.env.get("URL") || '';
 const intervalInseconds = Deno.env.get("TIME") || 120;
 const UUID = Deno.env.get("UUID") || '89c13786-25aa-4520-b2e7-12cd60fb5202';
@@ -369,27 +379,59 @@ const bootLogPath = join(FILE_PATH, 'boot.log');
 const configPath = join(FILE_PATH, 'config.json');
 
 async function cleanFiles() {
-    await new Promise((resolve) => setTimeout(resolve, 60000)); // 60 秒
+    try {
+        // 等待60秒
+        await new Promise((resolve) => setTimeout(resolve, 60000));
+        
+        const filesToRemove = [bootLogPath, configPath, npmPath, webPath, botPath];
+        for (const file of filesToRemove) {
+            try {
+                const fileExists = await exists(file);
+                if (!fileExists) {
+                    continue;
+                }
 
-    const filesToRemove = [bootLogPath, configPath, npmPath, webPath, botPath];
-    for (const file of filesToRemove) {
-        try
-        {
-            await Deno.remove(file, { recursive: true });
-        }
-        catch(error)
-        {
-            if(!(error instanceof Deno.errors.NotFound)) {
-                console.error(`Error while deleting file ${file}: ${error}`);
+                const fileInfo = await Deno.stat(file);
+                if (fileInfo.isDirectory) {
+                    await Deno.remove(file, { recursive: true });
+                } else {
+                    await Deno.remove(file);
+                }
+                console.log(`成功删除: ${file}`);
+            } catch (error) {
+                if (error instanceof Deno.errors.PermissionDenied) {
+                    console.error(`没有权限删除文件 ${file}: ${error.message}`);
+                } else if (!(error instanceof Deno.errors.NotFound)) {
+                    console.error(`删除文件 ${file} 时出错: ${error.message}`);
+                }
             }
         }
-    }
 
-    console.clear()
-    console.log('App is running');
-    console.log('Thank you for using this script, enjoy!');
+        console.log('清理完成');
+        console.log('应用程序正在运行中');
+        console.log('感谢使用本脚本，祝您使用愉快！');
+    } catch (error) {
+        console.error('清理文件时发生错误:', error.message);
+    }
 }
-cleanFiles();
+
+// 在初始化时确保工作目录存在
+async function initWorkDir() {
+    try {
+        await ensureDir(FILE_PATH);
+        console.log(`工作目录已准备: ${FILE_PATH}`);
+    } catch (error) {
+        if (error instanceof Deno.errors.PermissionDenied) {
+            console.error(`无法访问工作目录: ${error.message}`);
+            throw error;
+        }
+        console.error(`创建工作目录时出错: ${error.message}`);
+        throw error;
+    }
+}
+
+// 在程序启动时初始化工作目录
+await initWorkDir();
 
 // 自动访问项目URL
 let hasLoggedEmptyMessage = false;
