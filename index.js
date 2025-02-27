@@ -1,7 +1,8 @@
 // index.js
 // 导入 Deno 的标准库和内置模块
-const { copy } = Deno.std.streams;
-const { resolve, join } = Deno.std.path;
+import { copy } from "https://deno.land/std@0.217.0/streams/copy.ts";
+import { resolve, join } from "https://deno.land/std@0.217.0/path/mod.ts";
+import * as DenoAPI from "https://deno.land/std@0.217.0/version.ts";
 
 // 使用 Deno.env.get() 获取环境变量
 const FILE_PATH = Deno.env.get("FILE_PATH") || './temp';
