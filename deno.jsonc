@@ -1,8 +1,8 @@
 // deno.jsonc
 {
   "tasks": {
-    "start": "deno run --allow-env --allow-net --allow-read --allow-write --allow-run --allow-sys index.js",
-    "dev": "deno run --allow-env --allow-net --allow-read --allow-write --allow-run --allow-sys --watch index.js"
+    "start": "deno run --allow-env --allow-net --allow-read --allow-write=. --allow-run index.js",
+    "dev": "deno run --allow-env --allow-net --allow-read --allow-write=. --allow-run --watch index.js"
   },
   "env": {
     "FILE_PATH": ".runtime" // 使用当前目录作为默认工作目录
@@ -23,5 +23,12 @@
   },
   "compilerOptions": {
     "allowJs": true
+  },
+  "permissions": {
+    "net": true,
+    "env": true,
+    "read": true,
+    "write": ["."],
+    "run": true
   }
 }
