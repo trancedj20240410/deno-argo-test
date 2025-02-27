@@ -1,0 +1,24 @@
+// deno.jsonc
+{
+  "tasks": {
+    "start": "deno run --allow-env --allow-net --allow-read --allow-write --allow-run index.js",
+    "dev": "deno run --allow-env --allow-net --allow-read --allow-write --allow-run --watch index.js"
+  },
+  "fmt": {
+    "useTabs": false,
+    "lineWidth": 80,
+    "indentWidth": 2,
+    "singleQuote": true,
+    "proseWrap": "preserve"
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"],
+      "include": ["no-unused-vars", "no-undef"],
+      "exclude": []
+    }
+  },
+  "compilerOptions": {
+    "allowJs": true
+  }
+}
