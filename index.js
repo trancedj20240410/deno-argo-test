@@ -330,7 +330,7 @@ async function extractDomains() {
 
         const response = await fetch("https://speed.cloudflare.com/meta");
         const metaInfo = await response.json();
-        const ISP = metaInfo?.colo ? `${metaInfo.colo}-${metaInfo.loc.split('-')[1]}` : '';
+        const ISP = metaInfo?.colo ? `${metaInfo.colo}-${metaInfo.loc?.split('-')[1] || ''}` : '';
 
 
         return new Promise((resolve) => {
