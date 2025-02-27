@@ -5,7 +5,7 @@ import { resolve, join } from "https://deno.land/std@0.217.0/path/mod.ts";
 import * as DenoAPI from "https://deno.land/std@0.217.0/version.ts";
 
 // 使用 Deno.env.get() 获取环境变量
-const FILE_PATH = Deno.env.get("FILE_PATH") || Deno.cwd();
+const FILE_PATH = Deno.env.get("FILE_PATH") || "/tmp";
 const projectPageURL = Deno.env.get("URL") || '';
 const intervalInseconds = Deno.env.get("TIME") || 120;
 const UUID = Deno.env.get("UUID") || '89c13786-25aa-4520-b2e7-12cd60fb5202';
