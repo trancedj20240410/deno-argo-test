@@ -8,17 +8,14 @@ import * as DenoAPI from "https://deno.land/std@0.217.0/version.ts";
 // 获取工作目录的函数
 const getWorkDir = () => {
     try {
-        // 首先尝试使用环境变量中的路径
-        const customPath = Deno.env.get("FILE_PATH");
-        if (customPath) {
-            return resolve(customPath);
-        }
-
-        // 如果在受限环境中，使用当前目录
-        return resolve(".");
+        // 获取当前工作目录
+        const currentDir = Deno.cwd();
+        // 创建 .runtime 子目录
+        const runtimeDir = join(currentDir, ".runtime");
+        return runtimeDir;
     } catch (error) {
-        console.error("获取工作目录失败，使用当前目录：", error);
-        return resolve(".");
+        console.error("获取工作目录失败:", error);
+        return ".";
     }
 };
 
@@ -27,22 +24,26 @@ async function initWorkDir() {
     try {
         const dir = getWorkDir();
         
+        // 确保目录存在
+        await ensureDir(dir).catch(error => {
+            console.warn(`创建目录失败: ${error.message}`);
+            return ".";
+        });
+
         // 验证目录是否可写
         const testPath = join(dir, ".write-test");
-        await Deno.writeTextFile(testPath, "test")
-            .then(() => Deno.remove(testPath))
-            .catch((error) => {
-                console.warn(`目录 ${dir} 不可写: ${error.message}`);
-                // 如果目录不可写，回退到当前目录
-                return resolve(".");
-            });
-
-        console.log(`工作目录: ${dir}`);
-        return dir;
+        try {
+            await Deno.writeTextFile(testPath, "test");
+            await Deno.remove(testPath);
+            console.log(`工作目录: ${dir}`);
+            return dir;
+        } catch (error) {
+            console.warn(`目录 ${dir} 不可写: ${error.message}`);
+            return ".";
+        }
     } catch (error) {
         console.error(`初始化工作目录失败: ${error.message}`);
-        // 发生错误时使用当前目录
-        return resolve(".");
+        return ".";
     }
 }
 
