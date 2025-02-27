@@ -5,9 +5,7 @@ import { resolve, join } from "https://deno.land/std@0.217.0/path/mod.ts";
 import * as DenoAPI from "https://deno.land/std@0.217.0/version.ts";
 
 // 使用 Deno.env.get() 获取环境变量
-// 优先使用环境变量中的路径，如果都没有，则回退到 Deno.cwd()
-const TEMP_DIR = Deno.env.get("TEMPDIR") || Deno.env.get("TMPDIR") || "/var/tmp";
-const FILE_PATH = Deno.env.get("FILE_PATH") || TEMP_DIR || Deno.cwd();
+const FILE_PATH = Deno.env.get("FILE_PATH") || Deno.cwd();
 const projectPageURL = Deno.env.get("URL") || '';
 const intervalInseconds = Deno.env.get("TIME") || 120;
 const UUID = Deno.env.get("UUID") || '89c13786-25aa-4520-b2e7-12cd60fb5202';
@@ -22,7 +20,40 @@ const NAME = Deno.env.get("NAME") || 'Vls';
 const ARGO_PORT = Deno.env.get("ARGO_PORT") || 8080;
 const PORT = Deno.env.get("SERVER_PORT") || Deno.env.get("PORT") || 3000;
 
-// 生成 xr-ay 配置文件 (直接在代码中定义)
+//创建运行文件夹
+try {
+    await Deno.mkdir(FILE_PATH, { recursive: true });
+    console.log(`${FILE_PATH} is created`);
+} catch (error) {
+    if (error instanceof Deno.errors.AlreadyExists) {
+        console.log(`${FILE_PATH} already exists`);
+    } else {
+        console.error(`Error creating directory: ${error}`);
+    }
+}
+
+//清理历史文件
+const pathsToDelete = ['web', 'bot', 'npm', 'sub.txt', 'boot.log'];
+async function cleanupOldFiles() {
+    for (const file of pathsToDelete) {
+        const filePath = join(FILE_PATH, file);
+        try {
+            await Deno.remove(filePath);
+            console.log(`${filePath} deleted`);
+        }
+        catch (error) {
+            if (error instanceof Deno.errors.NotFound) {
+                console.error(`Skip Delete ${filePath}`);
+            }
+            else {
+                console.error(`Error deleting file: ${error}`);
+            }
+        }
+    }
+}
+await cleanupOldFiles();
+
+// 生成xr-ay配置文件 (使用 Deno.writeTextFile)
 const config = {
     log: { access: '/dev/null', error: '/dev/null', loglevel: 'none' },
     inbounds: [
@@ -36,6 +67,15 @@ const config = {
     outbounds: [{ protocol: "freedom", tag: "direct" }, { protocol: "blackhole", tag: "block" }]
 };
 
+try {
+    await Deno.writeTextFile(join(FILE_PATH, 'config.json'), JSON.stringify(config, null, 2));
+}
+catch (error)
+{
+    console.error(`Error writing config file: ${error}`);
+}
+
+
 // 判断系统架构
 function getSystemArchitecture() {
     const arch = Deno.build.arch;
@@ -46,21 +86,145 @@ function getSystemArchitecture() {
     }
 }
 
-// 下载对应系统架构的依赖文件 (修改为直接返回二进制数据)
+// 下载对应系统架构的依赖文件
 async function downloadFile(fileName, fileUrl) {
+    const filePath = join(FILE_PATH, fileName);
     try {
         const response = await fetch(fileUrl);
         if (!response.ok) {
             throw new Error(`Download ${fileName} failed: ${response.status} ${response.statusText}`);
         }
-        return response.arrayBuffer(); // 直接返回二进制数据
-    } catch (error) {
+        const file = await Deno.open(filePath, { create: true, write: true });
+        if(response.body) {
+            await copy(response.body, file);
+        }
+        file.close();
+        console.log(`Download ${fileName} successfully`);
+        return fileName;
+    }
+    catch (error) {
         console.error(`Download ${fileName} failed: ${error.message}`);
+        try {
+            await Deno.remove(filePath);
+        }
+        catch(e) {
+            //
+        }
         throw error; // Re-throw the error to be caught by the caller
     }
 }
 
-// 根据架构获取文件
+// 下载并运行依赖文件
+async function downloadFilesAndRun() {
+    const architecture = getSystemArchitecture();
+    const filesToDownload = getFilesForArchitecture(architecture);
+
+    if (filesToDownload.length === 0) {
+        console.log(`Can't find a file for the current architecture`);
+        return;
+    }
+
+    try {
+        const downloadedFiles = await Promise.all(filesToDownload.map(fileInfo => downloadFile(fileInfo.fileName, fileInfo.fileUrl)));
+        // 授权
+        for (const file of downloadedFiles) {
+            const filePath = join(FILE_PATH, file);
+            await Deno.chmod(filePath, 0o775);
+            console.log(`Empowerment success for ${filePath}: 775`);
+        }
+    } catch (err) {
+        console.error('Error downloading or processing files:', err);
+        return;
+    }
+
+    //运行ne-zha
+    let NEZHA_TLS = '';
+    if (NEZHA_SERVER && NEZHA_PORT && NEZHA_KEY) {
+        const tlsPorts = ['443', '8443', '2096', '2087', '2083', '2053'];
+        if (tlsPorts.includes(NEZHA_PORT)) {
+            NEZHA_TLS = '--tls';
+        } else {
+            NEZHA_TLS = '';
+        }
+        const command = new Deno.Command( join(FILE_PATH, 'npm'), {
+            args: [ "-s", `${NEZHA_SERVER}:${NEZHA_PORT}`, "-p", NEZHA_KEY, NEZHA_TLS ],
+            stdout: "null",
+            stderr: "piped",
+        });
+
+        try {
+            const child = command.spawn();
+            console.log('npm is running');
+            // Deno.Command 没有内置的等待启动完成的方法，你可能需要根据实际情况处理
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            const errorOutput = await child.stderrOutput();
+            const errorText = new TextDecoder().decode(errorOutput);
+            if(errorText) {
+                console.error(`npm running error: ${errorText}`);
+            }
+
+
+        } catch (error) {
+            console.error(`npm running error: ${error}`);
+        }
+    } else {
+        console.log('NEZHA variable is empty,skip running');
+    }
+
+    //运行xr-ay
+    const command1 =  new Deno.Command(join(FILE_PATH, 'web'), {
+        args: ["-c", join(FILE_PATH, 'config.json')],
+        stdout: "null",
+        stderr: "piped",
+    });
+    try {
+
+        const child = command1.spawn();
+        console.log('web is running');
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const errorOutput = await child.stderrOutput();
+        const errorText = new TextDecoder().decode(errorOutput);
+        if(errorText) {
+            console.error(`web running error: ${errorText}`);
+        }
+    } catch (error) {
+        console.error(`web running error: ${error}`);
+    }
+
+    // 运行cloud-fared
+    if (await Deno.stat(join(FILE_PATH, 'bot')).catch(() => false)) {
+        let args;
+
+        if (ARGO_AUTH.match(/^[A-Z0-9a-z=]{120,250}$/)) {
+            args = `tunnel --edge-ip-version auto --no-autoupdate --protocol http2 run --token ${ARGO_AUTH}`.split(" ");
+        } else if (ARGO_AUTH.match(/TunnelSecret/)) {
+            args = `tunnel --edge-ip-version auto --config ${join(FILE_PATH, 'tunnel.yml')} run`.split(" ");
+        } else {
+            args = `tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile ${join(FILE_PATH, 'boot.log')} --loglevel info --url http://localhost:${ARGO_PORT}`.split(" ");
+        }
+
+        try {
+            const command = new Deno.Command(join(FILE_PATH, 'bot'), {
+                args: args,
+                stdout: "null",
+                stderr: "piped"
+            });
+            const child = command.spawn();
+            console.log('bot is running');
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            const errorOutput = await child.stderrOutput();
+            const errorText = new TextDecoder().decode(errorOutput);
+            if(errorText) {
+                console.error(`bot running error: ${errorText}`);
+            }
+        } catch (error) {
+            console.error(`Error executing command: ${error}`);
+        }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
+}
+//根据系统架构返回对应的url
 function getFilesForArchitecture(architecture) {
     if (architecture === 'arm') {
         return [
@@ -78,68 +242,7 @@ function getFilesForArchitecture(architecture) {
     return [];
 }
 
-// 下载并运行依赖文件 (修改为在内存中执行)
-async function downloadFilesAndRun() {
-    const architecture = getSystemArchitecture();
-    const filesToDownload = getFilesForArchitecture(architecture);
-
-    if (filesToDownload.length === 0) {
-        console.log(`Can't find a file for the current architecture`);
-        return;
-    }
-
-    try {
-        const downloadedFiles = await Promise.all(filesToDownload.map(fileInfo => downloadFile(fileInfo.fileName, fileInfo.fileUrl)));
-
-        // 运行命令 (假设顺序是 npm, web, bot)
-        const commands = [
-            { cmd: ['npm'], args: ["-s", `${NEZHA_SERVER}:${NEZHA_PORT}`, "-p", NEZHA_KEY, NEZHA_TLS ? '--tls' : ''], options: { stdin: "piped", stdout: 'inherit', stderr: 'inherit' } },
-            { cmd: ['web'], args: [], options: { stdin: "piped", stdout: 'inherit', stderr: 'inherit', env: { "FILE_PATH": FILE_PATH, "PORT": PORT, "ARGO_DOMAIN": ARGO_DOMAIN, "CFIP": CFIP, "CFPORT": CFPORT, "NAME": NAME } } },
-            {
-                cmd: ['bot'],
-                args: ARGO_AUTH.match(/^[A-Z0-9a-z=]{120,250}$/)
-                    ? `tunnel --edge-ip-version auto --no-autoupdate --protocol http2 run --token ${ARGO_AUTH}`.split(" ")
-                    : `tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile ${join(FILE_PATH, 'boot.log')} --loglevel info --url http://localhost:${ARGO_PORT}`.split(" "), // 假设不支持 TunnelSecret
-                options: { stdin: "piped", stdout: 'inherit', stderr: 'inherit' }
-            }
-        ];
-
-        for (let i = 0; i < downloadedFiles.length; i++) {
-            const command = new Deno.Command(commands[i].cmd[0], {
-                ...commands[i].options,
-                args: commands[i].args,
-                input: downloadedFiles[i] // 将二进制数据作为 stdin
-            });
-
-            // 启动进程，但不等待它完成
-            command.spawn();
-            console.log(`${commands[i].cmd[0]} is running (in memory)`);
-        }
-
-        // 运行 xr-ay (假设 xr-ay 支持从 stdin 读取配置)
-        const xray = new Deno.Command('xr-ay', { // 假设 xr-ay 在 PATH 中
-            args: ["run", "-config", "/dev/stdin"], // 尝试从 stdin 读取配置
-            stdin: "piped",
-            stdout: "inherit",
-            stderr: "inherit",
-        });
-
-        const xrayProcess = xray.spawn();
-        console.log(`xr-ay is running (in memory, config from stdin)`);
-
-        // 将配置写入 xr-ay 的 stdin
-        const configString = JSON.stringify(config, null, 2);
-        const encoder = new TextEncoder();
-        await xrayProcess.stdin.write(encoder.encode(configString));
-        xrayProcess.stdin.close();
-
-
-    } catch (error) {
-        console.error(`Error downloading or running files: ${error}`);
-    }
-}
-
-// 获取固定隧道json (修改为不写入文件)
+// 获取固定隧道json
 async function argoType() {
     if (!ARGO_AUTH || !ARGO_DOMAIN) {
         console.log("ARGO_DOMAIN or ARGO_AUTH variable is empty, use quick tunnels");
@@ -147,94 +250,195 @@ async function argoType() {
     }
 
     if (ARGO_AUTH.includes('TunnelSecret')) {
-        console.log("ARGO_AUTH includes TunnelSecret, skip related steps");
+        await Deno.writeTextFile(join(FILE_PATH, 'tunnel.json'), ARGO_AUTH);
+        const tunnelYaml = `
+tunnel: ${ARGO_AUTH.split('"')[11]}
+credentials-file: ${join(FILE_PATH, 'tunnel.json')}
+protocol: http2
+
+ingress:
+  - hostname: ${ARGO_DOMAIN}
+    service: http://localhost:${ARGO_PORT}
+    originRequest:
+      noTLSVerify: true
+  - service: http_status:404
+`;
+        await Deno.writeTextFile(join(FILE_PATH, 'tunnel.yml'), tunnelYaml);
     } else {
         console.log("ARGO_AUTH mismatch TunnelSecret,use token connect to tunnel");
     }
 }
+await argoType();
 
-// 提取域名 (修改为不写入文件)
+// 获取临时隧道domain
 async function extractDomains() {
-    try {
-        const response = await fetch(`https://raw.githubusercontent.com/MaZhiGuo/DomainList/main/list.txt`);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch domain list: ${response.status} ${response.statusText}`);
-        }
-        const text = await response.text();
-        const domains = text.split('\n').filter(line => line.trim() !== '');
-        return domains;
-    } catch (error) {
-        console.error(`Error fetching or processing domain list: ${error}`);
-        return []; // 返回空数组
-    }
-}
+    let argoDomain;
 
-// 生成链接 (修改为不写入文件)
-async function generateLinks(argo_domain) {
-    const domains = await extractDomains();
-    if (domains.length === 0) {
-        console.log('No domains to generate links');
-        return ''; // 返回空字符串
-    }
-
-    let subTxt = '';
-    if (argo_domain) {
-        const vlessLink = `vless://${UUID}@${argo_domain}:${CFPORT}?encryption=none&security=tls&sni=${CFIP}&fp=randomized&type=ws&path=/vless-argo#${NAME}-Vless`;
-        const vmessLink = `vmess://${btoa(JSON.stringify({ add: argo_domain, aid: "0", host: CFIP, id: UUID, net: "ws", path: "/vmess-argo", port: CFPORT, ps: NAME + "-Vmess", tls: "tls", type: "none", v: "2" }))}`;
-        const trojanLink = `trojan://${UUID}@${argo_domain}:${CFPORT}?security=tls&sni=${CFIP}&fp=chrome&type=ws&path=/trojan-argo#${NAME}-Trojan`;
-        subTxt = `${vlessLink}\n${vmessLink}\n${trojanLink}`;
-    }
-
-    for (const domain of domains) {
-        const vlessLink = `vless://${UUID}@${domain}:${CFPORT}?encryption=none&security=tls&sni=${CFIP}&fp=randomized&type=ws&path=/vless#${NAME}-Vless`;
-        const vmessLink = `vmess://${btoa(JSON.stringify({ add: domain, aid: "0", host: CFIP, id: UUID, net: "ws", path: "/", port: CFPORT, ps: NAME + "-Vmess", tls: "tls", type: "none", v: "2" }))}`;
-        const trojanLink = `trojan://${UUID}@${domain}:${CFPORT}?security=tls&sni=${CFIP}&fp=chrome&type=ws&path=/#${NAME}-Trojan`;
-        subTxt += `\n${vlessLink}\n${vmessLink}\n${trojanLink}`;
-    }
-
-    // 打印 subTxt 内容到控制台 (base64 编码)
-    console.log(btoa(subTxt));
-    return subTxt; // 直接返回 subTxt
-}
-
-// 定时任务 (修改为不写入文件)
-async function scheduleTask(intervalInseconds, task) {
-    while (true) {
-        await task();
-        await new Promise((resolve) => setTimeout(resolve, intervalInseconds * 1000));
-    }
-}
-
-// 启动服务器 (修改为使用缓存的 subTxt)
-async function startserver() {
-    await argoType();
-    scheduleTask(intervalInseconds, async () => {
-        await extractDomains();
-        //  visitProjectPage(); // Initial visit.  No need, handled by interval now.
-    });
-
-    // 缓存 subTxt 的 base64 编码
-    let cachedSubTxt = '';
-
-    // 使用 Deno 的 HTTP server
-    const handler = async (request) => {
-        const url = new URL(request.url);
-        if (url.pathname === "/") {
-            return new Response("Hello world!");
-        } else if (url.pathname === "/sub") {
-            // 从缓存中获取
-            if (!cachedSubTxt) {
-                cachedSubTxt = await generateLinks(ARGO_DOMAIN || '').then(btoa);
-            }
-            return new Response(cachedSubTxt, {
-                headers: { "Content-Type": "text/plain; charset=utf-8" },
+    if (ARGO_AUTH && ARGO_DOMAIN) {
+        argoDomain = ARGO_DOMAIN;
+        console.log('ARGO_DOMAIN:', argoDomain);
+        await generateLinks(argoDomain);
+    } else {
+        try {
+            const fileContent = await Deno.readTextFile(join(FILE_PATH, 'boot.log'));
+            const lines = fileContent.split('\n');
+            const argoDomains = [];
+            lines.forEach((line) => {
+                const domainMatch = line.match(/https?:\/\/([^ ]*trycloudflare\.com)\/?/);
+                if (domainMatch) {
+                    const domain = domainMatch[1];
+                    argoDomains.push(domain);
+                }
             });
-        }
-        return new Response("Not Found", { status: 404 });
-    };
 
-    Deno.serve({ port: PORT }, handler);
+            if (argoDomains.length > 0) {
+                argoDomain = argoDomains[0];
+                console.log('ArgoDomain:', argoDomain);
+                await generateLinks(argoDomain);
+            } else {
+                console.log('ArgoDomain not found, re-running bot to obtain ArgoDomain');
+                // 删除 boot.log 文件，等待 2s 重新运行 server 以获取 ArgoDomain
+                await Deno.remove(join(FILE_PATH, 'boot.log'));
+                await new Promise((resolve) => setTimeout(resolve, 2000));
+                const args = `tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile ${join(FILE_PATH, 'boot.log')} --loglevel info --url http://localhost:${ARGO_PORT}`.split(" ");
+                try {
+                    const command = new Deno.Command(join(FILE_PATH, 'bot'), {
+                        args: args,
+                        stdout: "null",
+                        stderr: "piped",
+                    });
+                    const child = command.spawn();
+                    console.log('bot is running.');
+                    await new Promise((resolve) => setTimeout(resolve, 3000));
+                    const errorOutput = await child.stderrOutput();
+                    const errorText = new TextDecoder().decode(errorOutput);
+                    if(errorText) {
+                        console.error(`bot running error: ${errorText}`);
+                    }
+                    await extractDomains(); // 重新提取域名
+                } catch (error) {
+                    console.error(`Error executing command: ${error}`);
+                }
+            }
+        } catch (error) {
+            console.error('Error reading boot.log:', error);
+        }
+    }
+
+    // 生成 list 和 sub 信息
+    async function generateLinks(argoDomain) {
+
+        const response = await fetch("https://speed.cloudflare.com/meta");
+        const metaInfo = await response.json();
+        const ISP = metaInfo?.colo ? `${metaInfo.colo}-${metaInfo.loc?.split('-')[1] || ''}` : '';
+
+
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                const VMESS = { v: '2', ps: `${NAME}-${ISP}`, add: CFIP, port: CFPORT, id: UUID, aid: '0', scy: 'none', net: 'ws', type: 'none', host: argoDomain, path: '/vmess-argo?ed=2048', tls: 'tls', sni: argoDomain, alpn: '' };
+                const subTxt = `
+vless://${UUID}@${CFIP}:${CFPORT}?encryption=none&security=tls&sni=${argoDomain}&type=ws&host=${argoDomain}&path=%2Fvless-argo%3Fed%3D2048#${NAME}-${ISP}
+
+vmess://${btoa(JSON.stringify(VMESS))}
+
+trojan://${UUID}@${CFIP}:${CFPORT}?security=tls&sni=${argoDomain}&type=ws&host=${argoDomain}&path=%2Ftrojan-argo%3Fed%3D2048#${NAME}-${ISP}
+    `;
+                // 打印 sub.txt 内容到控制台
+                console.log(btoa(subTxt));
+                const filePath = join(FILE_PATH, 'sub.txt');
+                Deno.writeTextFile(filePath, btoa(subTxt)).then(()=>{
+                    console.log(`${FILE_PATH}/sub.txt saved successfully`);
+                }).catch(err => {
+                    console.error("Failed to write sub.txt", err);
+                });
+
+
+                // 将内容进行 base64 编码并写入 /sub 路由 (Deno server)
+                resolve(subTxt);
+
+            }, 2000);
+        });
+    }
 }
 
-await downloadFilesAndRun(); // 放在最后启动
+// 1分钟后删除list,boot,config文件
+const npmPath = join(FILE_PATH, 'npm');
+const webPath = join(FILE_PATH, 'web');
+const botPath = join(FILE_PATH, 'bot');
+const bootLogPath = join(FILE_PATH, 'boot.log');
+const configPath = join(FILE_PATH, 'config.json');
+
+async function cleanFiles() {
+    await new Promise((resolve) => setTimeout(resolve, 60000)); // 60 秒
+
+    const filesToRemove = [bootLogPath, configPath, npmPath, webPath, botPath];
+    for (const file of filesToRemove) {
+        try
+        {
+            await Deno.remove(file, { recursive: true });
+        }
+        catch(error)
+        {
+            if(!(error instanceof Deno.errors.NotFound)) {
+                console.error(`Error while deleting file ${file}: ${error}`);
+            }
+        }
+    }
+
+    console.clear()
+    console.log('App is running');
+    console.log('Thank you for using this script, enjoy!');
+}
+cleanFiles();
+
+// 自动访问项目URL
+let hasLoggedEmptyMessage = false;
+async function visitProjectPage() {
+    try {
+        // 如果URL和TIME变量为空时跳过访问项目URL
+        if (!projectPageURL || !intervalInseconds) {
+            if (!hasLoggedEmptyMessage) {
+                console.log("URL or TIME variable is empty,skip visit url");
+                hasLoggedEmptyMessage = true;
+            }
+            return;
+        } else {
+            hasLoggedEmptyMessage = false;
+        }
+
+        await fetch(projectPageURL);
+        console.log('Page visited successfully');
+        console.clear()
+    } catch (error) {
+        console.error('Error visiting project page:', error.message);
+    }
+}
+
+// 使用 Deno 的 setInterval
+if(projectPageURL && intervalInseconds) {
+    setInterval(visitProjectPage, intervalInseconds * 1000);
+}
+
+// 回调运行
+async function startserver() {
+    await downloadFilesAndRun();
+    await extractDomains();
+    //  visitProjectPage(); // Initial visit.  No need, handled by interval now.
+}
 await startserver();
+// 使用 Deno 的 HTTP server
+const handler = async (request) => {
+    const url = new URL(request.url);
+    if(url.pathname === "/") {
+        return new Response("Hello world!");
+    } else if (url.pathname === "/sub") {
+        const subTxt = await generateLinks(ARGO_DOMAIN || ''); // Or some cached value
+        const encodedContent = btoa(subTxt);
+        return new Response(encodedContent, {
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+        });
+    }
+    return new Response("Not Found", { status: 404 });
+};
+
+Deno.serve({ port: PORT }, handler);
