@@ -523,3 +523,12 @@ const handler = async (request) => {
 };
 
 Deno.serve({ port: PORT }, handler);
+
+// 创建工作目录
+await Deno.mkdir('.runtime', { recursive: true }).catch(() => {});
+
+// 设置环境变量
+Deno.env.set('FILE_PATH', '.runtime');
+
+// 运行应用
+await Deno.run({ cmd: ['deno', 'task', 'start'] }).status();
