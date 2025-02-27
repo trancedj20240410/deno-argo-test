@@ -5,7 +5,7 @@
     "dev": "deno run --allow-env --allow-net --allow-read --allow-write --allow-run --watch index.js"
   },
   "env": {
-    "FILE_PATH": "." // 使用当前目录作为默认工作目录
+    "FILE_PATH": ".runtime" // 使用当前目录作为默认工作目录
   },
   "fmt": {
     "useTabs": false,
