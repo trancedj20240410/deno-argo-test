@@ -427,9 +427,8 @@ async function startserver() {
     //  visitProjectPage(); // Initial visit.  No need, handled by interval now.
 }
 await startserver();
-
 // 使用 Deno 的 HTTP server
-const handler = async (request: Request): Promise<Response> => {
+const handler = async (request) => {
     const url = new URL(request.url);
     if(url.pathname === "/") {
         return new Response("Hello world!");
